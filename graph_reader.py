@@ -5,19 +5,19 @@ Eric Chen
 GraphReader class: uses CV techniques to identify nodes and edges in an image
 of a graph.
 
+TODO: morph after node removal, then work on identifying edges?
 TODO: maybe morph for state detection but use thresholded, not morphed version for
         detecting the numbers? bc morph can tend to erase numbers. The morph may
         be very important for the line detection because of the edge noise. And
         implement functions for all of these.
 TODO: enforce thresholding for every image - maybe after morph operators
 TODO: figure out how to get circles fully surround the node
-TODO: automatically detect whether an image should be inverted or not
 TODO: input validation for if nodes are labeled the same thing
 idea: way to detect self-loops: use less strict circle detection, if we have two
         intersecting circles then we probably have that the smaller circle is a
         self-loop? if one circle is completely inside another, then it might just
         be a number
-TODO: automate the min size for a circle - want to exclude numbers/lables but detect
+TODO: automate the min size for a circle - want to exclude numbers/labels but detect
         self-loops as well as states
 TODO: try on hand-drawn graphs
 TODO: when erasing nodes: account for different line thicknesses of the nodes
@@ -25,6 +25,7 @@ TODO: when erasing nodes: account for different line thicknesses of the nodes
 
 notes:
 circles are more centered on thresholded images!
+
 
 
 process:
@@ -47,9 +48,6 @@ import sys
 import cv2
 
 class GraphReader(object):
-
-    def __init__(self):
-        self.butt = 5
 
     '''
     summary: returns 2d list where each element is (x, y, r) of circle in image
@@ -89,7 +87,7 @@ class GraphReader(object):
         out = orig.copy() # we want output to be single-channel, binary
         for (x, y, r) in circles:
             # NOTE: we must increase the radius to fully erase the edge
-            cv2.circle(out, (x, y), r+8, 0, -1)
+            cv2.circle(out, (x, y), r+10, 0, -1)
         return out
 
     '''
@@ -111,6 +109,30 @@ class GraphReader(object):
         cv2.imshow(title, image)
         while cv2.waitKey(15) < 0: pass
 
+
+class ContourUtility(object):
+
+    # all these functions take in contours as defined by CV2
+
+    # returns area of contour
+    @staticmethod
+    def get_area(contour):
+        return cv2.contourArea(contour)
+
+    # returns (x, y) coordinate of centroid of contour (i.e. (col, row))
+    @staticmethod
+    def get_cxy(contour):
+        M = cv2.moments(contour)
+
+        # return a center that won't be inside a state if m00 is 0
+        if M['m00'] == 0:
+            return (-1, -1) # to signal m00 was 0
+        else:
+            cx = int(M['m10']/M['m00'])
+            cy = int(M['m01']/M['m00'])
+            return (cx, cy)
+
+
 def main():
 
 
@@ -131,13 +153,61 @@ def main():
     gr.show(img_thresholded, 'thresholded image')
     gr.show(gr.draw_circles(img_thresholded), 'thresholded image w circles')
 
+    # after nodes identified, try identifying the node labels with findContours
+    #   inside the location
+
+    node_info = gr.find_circles(img_thresholded)
+    print(node_info)
+
+    contours, hierarchy = cv2.findContours(img, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    # check if each contour is smaller than size of circle and contained in each circle:
+
+    for i in range(len(contours)):
+        area = ContourUtility.get_area(contours[i])
+        cxy = ContourUtility.get_cxy(contours[i])
+        print('This contour has area {} and is centered at {}'.format(area, cxy))
+
+        bg = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        cv2.drawContours(bg, contours, i, (0, 0, 255), thickness=2)
+        gr.show(bg, 'original w contours drawn')
+
+
+
+    '''
+    for i in range(len(contours)):
+        # get contour's area and centroid
+        cnt_area = ContourUtility.get_area(contours[i])
+        cnt_cxy = np.array(ContourUtility.get_cxy(contours[i]))
+
+        for node in circles:
+            node_area = (np.pi)*(node[2] ** 2)
+            node_cxy = node[0:2]
+
+            # if the centroid of the contour is within the node/circle
+            if np.linalg.norm(cnt_cxy-node_cxy) < node[2]:
+                bg = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+                cv2.drawContours(bg, contours, i, (0, 0, 255), thickness=2)
+                gr.show(bg, "this contour's centroid is in the middle of a node")
+    '''
+
+    # we need to search thru the contours and find the contours that represent
+    # node labels: just take the circle/node info, store it, then if the centroid of
+    # a contour is within a radius's dis
+
+    # AREA OF THE CONTOUR has to be less than some factor to differentiate the
+    # outline of the whole thing or the node itself, from just the appropriate
+    # label
+
+
+
     # now try removing nodes on thresholded img
     gr.show(gr.erase_nodes(img_thresholded), 'thresholded img w nodes erased')
 
+    '''
     # try with thresholding AND morph operators:
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     img_morphed = cv2.morphologyEx(img_thresholded, cv2.MORPH_OPEN, kernel)
-
+    '''
 
 
 
