@@ -5,7 +5,14 @@ Eric Chen
 GraphReader class: uses CV techniques to identify nodes and edges in an image
 of a graph.
 
+TODO: "4" has two contours: the outer and the inner. Figure out how to exclude
+the inner ones before you get a bounding rect - or more simply, just only accept
+the max size contour within the circle. This is way better.
+
+TODO: get the bounding rect of node labels, then store as new images
+TODO: figure out how to store node state and associate node labels with them
 TODO: morph after node removal, then work on identifying edges?
+
 TODO: maybe morph for state detection but use thresholded, not morphed version for
         detecting the numbers? bc morph can tend to erase numbers. The morph may
         be very important for the line detection because of the edge noise. And
@@ -25,8 +32,6 @@ TODO: when erasing nodes: account for different line thicknesses of the nodes
 
 notes:
 circles are more centered on thresholded images!
-
-
 
 process:
 -read in grayscale image
@@ -155,48 +160,26 @@ def main():
 
     # after nodes identified, try identifying the node labels with findContours
     #   inside the location
-
     node_info = gr.find_circles(img_thresholded)
-    print(node_info)
-
     contours, hierarchy = cv2.findContours(img, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+
     # check if each contour is smaller than size of circle and contained in each circle:
-
-    for i in range(len(contours)):
-        area = ContourUtility.get_area(contours[i])
-        cxy = ContourUtility.get_cxy(contours[i])
-        print('This contour has area {} and is centered at {}'.format(area, cxy))
-
-        bg = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-        cv2.drawContours(bg, contours, i, (0, 0, 255), thickness=2)
-        gr.show(bg, 'original w contours drawn')
-
-
-
-    '''
     for i in range(len(contours)):
         # get contour's area and centroid
         cnt_area = ContourUtility.get_area(contours[i])
         cnt_cxy = np.array(ContourUtility.get_cxy(contours[i]))
 
-        for node in circles:
+        for node in node_info:
             node_area = (np.pi)*(node[2] ** 2)
             node_cxy = node[0:2]
 
             # if the centroid of the contour is within the node/circle
             if np.linalg.norm(cnt_cxy-node_cxy) < node[2]:
-                bg = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-                cv2.drawContours(bg, contours, i, (0, 0, 255), thickness=2)
-                gr.show(bg, "this contour's centroid is in the middle of a node")
-    '''
-
-    # we need to search thru the contours and find the contours that represent
-    # node labels: just take the circle/node info, store it, then if the centroid of
-    # a contour is within a radius's dis
-
-    # AREA OF THE CONTOUR has to be less than some factor to differentiate the
-    # outline of the whole thing or the node itself, from just the appropriate
-    # label
+                # 0.5 to not detect the contours of the actual nodes
+                if cnt_area < 0.5*node_area:
+                    bg = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+                    cv2.drawContours(bg, contours, i, (0, 0, 255), thickness=2)
+                    gr.show(bg, "this contour's centroid is contained in a node")
 
 
 
