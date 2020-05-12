@@ -5,9 +5,8 @@ Eric Chen
 GraphReader class: uses CV techniques to identify nodes and edges in an image
 of a graph.
 
-TODO: "4" has two contours: the outer and the inner. Figure out how to exclude
-the inner ones before you get a bounding rect - or more simply, just only accept
-the max size contour within the circle. This is way better.
+TODO: simplify the node labeling? maybe create a Graph class which does the process
+we're currently doing in main?
 
 TODO: get the bounding rect of node labels, then store as new images
 TODO: figure out how to store node state and associate node labels with them
@@ -114,6 +113,30 @@ class GraphReader(object):
         cv2.imshow(title, image)
         while cv2.waitKey(15) < 0: pass
 
+# represents information about a node: its centroid & area in the image
+#   as well as info about its label
+class Node(object):
+
+    # state_list is the np_array [x y r] of the node in pixels
+    def __init__(self, state_array):
+        assert len(state_array.shape) == 1
+        assert state_array.shape[0] == 3
+
+        # state for node's centroid and area
+        self.x = state_array[0]
+        self.y = state_array[1]
+        self.r = state_array[2]
+
+        # label of node, is a cv2 contour
+        self.label = None
+
+    # calculate area of node
+    def area(self):
+        return (np.pi) * (self.r ** 2)
+
+    # return tuple of (x, y) of node's centroid
+    def cxy(self):
+        return (self.x, self.y)
 
 class ContourUtility(object):
 
@@ -161,6 +184,10 @@ def main():
     # after nodes identified, try identifying the node labels with findContours
     #   inside the location
     node_info = gr.find_circles(img_thresholded)
+    nodes = []
+    for node in node_info:
+        nodes.append(Node(node)) # add Node object for each node found
+
     contours, hierarchy = cv2.findContours(img, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
 
     # check if each contour is smaller than size of circle and contained in each circle:
@@ -169,19 +196,24 @@ def main():
         cnt_area = ContourUtility.get_area(contours[i])
         cnt_cxy = np.array(ContourUtility.get_cxy(contours[i]))
 
-        for node in node_info:
-            node_area = (np.pi)*(node[2] ** 2)
-            node_cxy = node[0:2]
+        # if contour centroid is within the node/circle and is small enough to
+        #   be a label (0.5)
+        for node in nodes:
+            node_area = node.area()
+            if (np.linalg.norm(node.cxy() - cnt_cxy) < node.r) and \
+               cnt_area < 0.5*node.area():
 
-            # if the centroid of the contour is within the node/circle
-            if np.linalg.norm(cnt_cxy-node_cxy) < node[2]:
-                # 0.5 to not detect the contours of the actual nodes
-                if cnt_area < 0.5*node_area:
-                    bg = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-                    cv2.drawContours(bg, contours, i, (0, 0, 255), thickness=2)
-                    gr.show(bg, "this contour's centroid is contained in a node")
+               if node.label is None:
+                   node.label = contours[i]
+               elif ContourUtility.get_area(node.label) < cnt_area:
+                   # make the largest contour inside the node the label
+                   node.label = contours[i]
 
 
+    for node in nodes:
+        bg = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        cv2.drawContours(bg, [node.label], 0, (0, 0, 255), thickness=2)
+        gr.show(bg, "selected label for each node")
 
     # now try removing nodes on thresholded img
     gr.show(gr.erase_nodes(img_thresholded), 'thresholded img w nodes erased')
