@@ -5,19 +5,13 @@ Eric Chen
 GraphReader class: uses CV techniques to identify nodes and edges in an image
 of a graph.
 
-TODO: simplify the node labeling? maybe create a Graph class which does the process
-we're currently doing in main?
+TODO: rethink organization, create Graph class and put some stuff in main into
+      functions
 
-TODO: get the bounding rect of node labels, then store as new images
-TODO: figure out how to store node state and associate node labels with them
-TODO: morph after node removal, then work on identifying edges?
-
-TODO: maybe morph for state detection but use thresholded, not morphed version for
-        detecting the numbers? bc morph can tend to erase numbers. The morph may
-        be very important for the line detection because of the edge noise. And
-        implement functions for all of these.
-TODO: enforce thresholding for every image - maybe after morph operators
 TODO: figure out how to get circles fully surround the node
+TODO: morph after node removal, then work on identifying edges - but don't morph
+  before identifying node labels
+TODO: enforce thresholding for every image - maybe after morph operators
 TODO: input validation for if nodes are labeled the same thing
 idea: way to detect self-loops: use less strict circle detection, if we have two
         intersecting circles then we probably have that the smaller circle is a
@@ -26,8 +20,6 @@ idea: way to detect self-loops: use less strict circle detection, if we have two
 TODO: automate the min size for a circle - want to exclude numbers/labels but detect
         self-loops as well as states
 TODO: try on hand-drawn graphs
-TODO: when erasing nodes: account for different line thicknesses of the nodes
-
 
 notes:
 circles are more centered on thresholded images!
@@ -38,12 +30,12 @@ process:
 -threshold the image
 -detect states/nodes on thresholded image
     - this involves the labeling part
+-find the contours within each node that represent the label
+    - take these labels and use MNIST to process them
+    - store all the nodes and associate state in some data structure
 -remove nodes and perform morph operators to leave just edges on the graph
 -with purely edges: detect self-loops as well as regular transitions - straight
     as well as curved arrows
--at some point (potentially before), identify labels by looking in the nodes,
-   finding the contour in there, and taking the bounding rect of that contour ->
-   pass into mnist
 -with all this information, construct/store full graph info: nodes and edges
 '''
 
@@ -66,7 +58,6 @@ class GraphReader(object):
         circles = cv2.HoughCircles(image_gray, cv2.HOUGH_GRADIENT, \
                                     1, 50, param1=80, param2=40)
 
-        #TODO: increase radius size to be safe?
         return np.round(circles[0, :]).astype('int')
 
     '''
@@ -203,17 +194,19 @@ def main():
             if (np.linalg.norm(node.cxy() - cnt_cxy) < node.r) and \
                cnt_area < 0.5*node.area():
 
+               print(cv2.boundingRect(contours[i]))
                if node.label is None:
                    node.label = contours[i]
                elif ContourUtility.get_area(node.label) < cnt_area:
                    # make the largest contour inside the node the label
                    node.label = contours[i]
 
-
     for node in nodes:
         bg = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
         cv2.drawContours(bg, [node.label], 0, (0, 0, 255), thickness=2)
-        gr.show(bg, "selected label for each node")
+        (x, y, w, h) = cv2.boundingRect(node.label)
+        cv2.rectangle(bg, (x, y), (x+w, y+h), (255, 0, 0), thickness=1)
+        gr.show(bg, "selected label for each node with bounding rect drawn")
 
     # now try removing nodes on thresholded img
     gr.show(gr.erase_nodes(img_thresholded), 'thresholded img w nodes erased')
